@@ -14,18 +14,14 @@ pub fn main() !void {
 
     while (true) {
         const connection = try listener.accept();
-        // This will close the connection, after the CURRENT loop iteration
-        // is finished.
-        defer connection.stream.close();
+        // We'll close the connection, inside the handler function
 
-        // Note the !void return of `ping_response()`. We need to use try
-        // to propagate errors upward
-        try ping_response(connection);
+        _ = try std.Thread.spawn(.{}, handle_client, .{ stdout, connection });
     }
 }
 
-fn ping_response(connection: net.Server.Connection) !void {
-    const stdout = std.io.getStdOut().writer();
+fn handle_client(stdout: anytype, connection: net.Server.Connection) !void {
+    defer connection.stream.close();
 
     try stdout.print("accepted new connection\n", .{});
 

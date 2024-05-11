@@ -75,3 +75,33 @@ We'll need to run a loop that reads inputs from a connection and sends a respons
 - Just like the previous stage, we can hardcode `+PONG\r\n` as the response of this stage. We'll get to parsing input in later stages.
 
 - The 2 PING commands will be sent using the same connection. We'll get to handling multiple connections in later stages.
+
+=== Handle concurrent clients
+
+==== Task
+
+In this stage, we'll add support for multiple concurrent clients.
+
+In addition to handling multiple commands from the same client, Redis servers are also designed to handle multiple clients at once.
+
+To implement this, we'll need to either use threads, or an event loop, like the official Redies implementation does.
+
+==== Tests
+
+The server will execute your program like this:
+``sh
+./spawn_redis_server.sh
+``
+
+It'll then send 2 PING commands conncurrently using 2 different connections:
+``sh
+// These two will be sent concurrently so that we test your server's ability to handle concurrent clients.
+redis-cli PING
+redis-cli PING
+``
+
+The tester will expect to receive 2 `+PONG\r\n` responses.
+
+==== Notes
+
+Since the tester client _only_ sends the PING command at the moment, it's okay to ignore what the client sends and hardcode a response. We'll get to parsing client input in later stages.
