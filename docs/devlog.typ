@@ -45,3 +45,33 @@ redis-cli PING
 - You can also ignore handling multiple clients and handling multiple PING commands in the stage, we'll get to that in later stages.
 
 - The exact bytes your program will receive won't just be PING, you'll receive something like this:`*1\r\n$4\r\nPING\r\n`, which is  the Redis protocol encoding of the PING command. We'll learn more about this in later stages.
+
+=== Respond to multiple PINGs
+
+==== Task
+In this stage, we'll respond to multiple `PING` commands sent by the same connection.
+
+A Redis server starts to listen for the next command as soon as it's done responding to the previous one.
+This allows Redis clients to send multiple commands using the same connection.
+
+==== Tests
+
+The tester will execute your program like so:
+``sh
+./spawn_redis_server.sh
+``
+
+It'll then send 2 PING commands using the same connection:
+``sh
+echo -e "PING\n\PING" | redis-cli
+``
+
+The test will expect to receive 2 `+PONG\r\n` responses.
+
+We'll need to run a loop that reads inputs from a connection and sends a response back.
+
+==== Notes
+
+- Just like the previous stage, we can hardcode `+PONG\r\n` as the response of this stage. We'll get to parsing input in later stages.
+
+- The 2 PING commands will be sent using the same connection. We'll get to handling multiple connections in later stages.
