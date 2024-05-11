@@ -4,8 +4,6 @@ const net = std.net;
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    // try stdout.print("Logs from your program will appear here!", .{});
     try stdout.print("Ziggy Redis\n", .{});
 
     const address = try net.Address.resolveIp("127.0.0.1", 6379);
@@ -16,24 +14,20 @@ pub fn main() !void {
 
     while (true) {
         const connection = try listener.accept();
+        // This will close the connection, after the CURRENT loop iteration
+        // is finished.
+        defer connection.stream.close();
 
-        try stdout.print("accepted new connection", .{});
-        connection.stream.close();
+        // Note the !void return of `ping_response()`. We need to use try
+        // to propagate errors upward
+        try ping_response(connection);
     }
+}
 
-    // Uncomment this block to pass the first stage
-    //
-    // const address = try net.Address.resolveIp("127.0.0.1", 6379);
+fn ping_response(connection: net.Server.Connection) !void {
+    const stdout = std.io.getStdOut().writer();
 
-    // var listener = try address.listen(.{
-    //     .reuse_address = true,
-    // });
-    // defer listener.deinit();
+    try stdout.print("accepted new connection", .{});
 
-    // while (true) {
-    //     const connection = try listener.accept();
-
-    //     try stdout.print("accepted new connection", .{});
-    //     connection.stream.close();
-    // }
+    try connection.stream.writeAll("+PONG\r\n");
 }
