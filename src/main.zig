@@ -1,4 +1,5 @@
 const std = @import("std");
+const RespParser = @import("./RespParser.zig");
 const net = std.net;
 
 pub fn main() !void {
@@ -20,6 +21,8 @@ pub fn main() !void {
     }
 }
 
+const HandlerError = error{ ConnectioReadFailed, BufferFull };
+
 fn handle_client(stdout: anytype, connection: net.Server.Connection) !void {
     defer connection.stream.close();
 
@@ -28,24 +31,53 @@ fn handle_client(stdout: anytype, connection: net.Server.Connection) !void {
     const reader = connection.stream.reader();
     var buf: [128]u8 = undefined;
 
-    while (reader.read(&buf)) |bytes_read| {
+    var offset: usize = 0;
+    while (true) {
+        std.debug.print("reading.\n", .{});
+        // Read into buffer slice from offset to end
+        const bytes_read = reader.read(buf[offset..]) catch |err| {
+            std.debug.print("ERROR: {}", .{err});
+            return HandlerError.ConnectioReadFailed;
+        };
+
         if (bytes_read == 0) {
-            std.debug.print("No bytes read. Possible EOF. Closing connection..\n", .{});
+            std.debug.print("No bytes read. Possible EOF.\n", .{});
             break;
         }
 
-        // Print the contents of the buffer as ASCII characters
-        std.debug.print("Read {} bytes: <{s}", .{ bytes_read, buf[0..bytes_read] });
-        std.debug.print("Checking for PING substring..\n", .{});
+        std.debug.print("read: {} bytes.\n", .{bytes_read});
+        std.debug.print("Buffer: {s}\n", .{buf});
 
-        const found_ping = std.mem.indexOf(u8, buf[0..bytes_read], "PING");
-        if (found_ping) |index| {
-            std.debug.print("+Found PING at {}! Responding..\n", .{index});
-        } else {
-            std.debug.print("-Not found. Moving on..\n", .{});
+        if ((bytes_read == 0) and (offset == 0)) {
+            // We haven't read anything. This is an error
+            return HandlerError.ConnectioReadFailed;
         }
-        try connection.stream.writeAll("+PONG\r\n");
-    } else |err| {
-        try stdout.print("Error reading: {}", .{err});
+
+        offset += bytes_read;
+
+        if (offset >= buf.len) {
+            std.debug.print("Buffer full. Increase buffer size.\n", .{});
+            return HandlerError.BufferFull;
+        }
+
+        // Try parsing
+        std.debug.print("Read buffer: {s}\n\n", .{buf});
+
+        var parser = RespParser.RespParser.init(&buf);
+        _ = parser.parse();
+
+        switch (try parser.matchCommand()) {
+            RespParser.Command.Ping => {
+                try connection.stream.writeAll("+PONG\r\n");
+            },
+            RespParser.Command.Echo => |payload| {
+                std.debug.print("ECHO: {s}\n\n", .{payload});
+                try connection.stream.writer().print("${}\r\n{s}\r\n", .{ payload.len, payload });
+            },
+            else => {
+                std.debug.print("NO MATCH!!!\n", .{});
+                unreachable;
+            },
+        }
     }
 }
