@@ -10,7 +10,7 @@ pub const State = enum {
     Done,
 };
 
-const NUM_CMDS = 1;
+const NUM_CMDS = 2;
 const NUM_ARGS = 10;
 
 pub const RespParser = struct {
@@ -69,8 +69,8 @@ pub const RespParser = struct {
 
                                 // Reset for subsequent runs
                                 self.curr_arg_index = 0;
-                                // self.state = .Array;
-                                self.state = .Done;
+                                self.state = .Array;
+                                // self.state = .Done;
                             }
                         },
                         else => return error.InvalidFormat,
