@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Command = union(enum) { Ping, Echo: []const u8, Set: struct { key: []const u8, value: []const u8 }, Get: struct { key: []const u8 }, Generic: struct { name: []const u8, args: [][]const u8 } };
+pub const Command = union(enum) { Ping, Echo: []const u8, Set: struct { key: []const u8, value: []const u8, px: ?i64 }, Get: struct { key: []const u8 }, Generic: struct { name: []const u8, args: [][]const u8 } };
 
 pub const DataType = union(enum) { Array_t: usize, BString_t: usize, Payload_t };
 
@@ -103,9 +103,15 @@ pub const RespParser = struct {
         } else if (std.mem.eql(u8, cmd_name, "SET")) {
             if (self.num_elems != 3) return error.InvalidNumArgsForSet;
 
+            var px: ?i64 = null;
+            if (self.num_elems == 5 and std.mem.eql(u8, self.temp_args[3], "PX")) {
+                px = try std.fmt.parseInt(i64, self.temp_args[4], 10);
+            }
+
             self.commands[self.command_count] = Command{ .Set = .{
                 .key = self.temp_args[1],
                 .value = self.temp_args[2],
+                .px = px,
             } };
         } else {
             self.commands[self.command_count] = Command{ .Generic = .{

@@ -3,16 +3,18 @@ const RespParser = @import("parser.zig");
 const net = std.net;
 
 const State = struct {
-    hash_map: *std.StringArrayHashMap([]const u8),
+    hash_map: *std.StringArrayHashMap(MapEntry),
     mutex: *std.Thread.Mutex,
 };
+
+const MapEntry = struct { value: []const u8, added_at: i64, px: ?i64 };
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Ziggy Redis\n", .{});
 
     const allocator = std.heap.page_allocator;
-    var hash_map = std.StringArrayHashMap([]const u8).init(allocator);
+    var hash_map = std.StringArrayHashMap(MapEntry).init(allocator);
     defer hash_map.deinit();
 
     var mutex = std.Thread.Mutex{};
@@ -88,18 +90,34 @@ fn handle_command(command: RespParser.Command, stream: anytype, state: *State) !
             state.mutex.lock();
             defer state.mutex.unlock();
 
-            try state.hash_map.put(payload.key, payload.value);
+            const map_entry = MapEntry{
+                .value = payload.value,
+                .added_at = std.time.milliTimestamp(),
+                .px = payload.px,
+            };
+
+            try state.hash_map.put(payload.key, map_entry);
             try stream.writeAll("+OK\r\n");
         },
         RespParser.Command.Get => |payload| {
             state.mutex.lock();
             defer state.mutex.unlock();
 
-            const value = state.hash_map.get(payload.key);
-            if (value == null) {
+            const entry: ?MapEntry = state.hash_map.get(payload.key);
+            if (entry == null) {
                 try stream.writeAll("$-1\r\n");
             } else {
-                try stream.writer().print("${d}\r\n{s}\r\n", .{ value.?.len, value.? });
+                const now = std.time.milliTimestamp();
+                const added_at = entry.?.added_at;
+                const px = entry.?.px;
+                if (px == null or now < (added_at + px.?)) {
+                    const len = entry.?.value.len;
+                    const value = entry.?.value;
+
+                    try stream.writer().print("${d}\r\n{s}\r\n", .{ len, value });
+                } else {
+                    try stream.writeAll("$-1\r\n");
+                }
             }
         },
         else => {
