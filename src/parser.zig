@@ -90,21 +90,23 @@ pub const RespParser = struct {
     fn process_command(self: *RespParser) !void {
         if (self.num_elems == 0) return error.InvalidFormat;
 
-        const cmd_name = self.temp_args[0]; // the 0-th arg in our args slice is the actual command name
-        if (std.mem.eql(u8, cmd_name, "PING")) {
+        var cmd_name = self.temp_args[0]; // the 0-th arg in our args slice is the actual command name
+        cmd_name = try std.ascii.allocLowerString(self.allocator, cmd_name);
+        if (std.mem.eql(u8, cmd_name, "ping")) {
             self.commands[self.command_count] = Command{ .Ping = {} };
-        } else if (std.mem.eql(u8, cmd_name, "ECHO")) {
+        } else if (std.mem.eql(u8, cmd_name, "echo")) {
             if (self.num_elems != 2) return error.InvalidNumArgsForEcho;
 
             self.commands[self.command_count] = Command{ .Echo = self.temp_args[1] };
-        } else if (std.mem.eql(u8, cmd_name, "GET")) {
+        } else if (std.mem.eql(u8, cmd_name, "get")) {
             if (self.num_elems != 2) return error.InvalidNumArgsForGet;
             self.commands[self.command_count] = Command{ .Get = .{ .key = self.temp_args[1] } };
-        } else if (std.mem.eql(u8, cmd_name, "SET")) {
-            if (self.num_elems != 3) return error.InvalidNumArgsForSet;
+        } else if (std.mem.eql(u8, cmd_name, "set")) {
+            if (self.num_elems < 3) return error.InvalidNumArgsForSet;
 
             var px: ?i64 = null;
-            if (self.num_elems == 5 and std.mem.eql(u8, self.temp_args[3], "PX")) {
+            const px_arg = try std.ascii.allocLowerString(self.allocator, self.temp_args[3]);
+            if (self.num_elems == 5 and std.mem.eql(u8, px_arg, "px")) {
                 px = try std.fmt.parseInt(i64, self.temp_args[4], 10);
             }
 
@@ -137,6 +139,17 @@ pub const RespParser = struct {
             else => return DataType{ .Payload_t = {} },
         }
     }
+
+    // fn toLower(s: []const u8) []u8 {
+    //     var result = s;
+    //     for (result, 0..) |*c, i| {
+    //         if (std.ascii.isUpper(c.*)) {
+    //             result[i] = std.ascii.toLower(c.*);
+    //         }
+    //     }
+
+    //     return result;
+    // }
 };
 
 test "ping" {
