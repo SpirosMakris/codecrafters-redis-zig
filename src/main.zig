@@ -77,8 +77,9 @@ fn handle_client(stdout: anytype, connection: net.Server.Connection, state: *Sta
             // We haven't read anything. This is an error
             return HandlerError.ConnectioReadFailed;
         }
-
-        offset += bytes_read;
+        const new_offset = offset + bytes_read;
+        const msg = buf[offset..new_offset];
+        offset = new_offset;
 
         if (offset >= buf.len) {
             std.debug.print("Buffer full. Increase buffer size.\n", .{});
@@ -86,9 +87,9 @@ fn handle_client(stdout: anytype, connection: net.Server.Connection, state: *Sta
         }
 
         // Try parsing
-        std.debug.print("Read buffer: {s}\n\n", .{buf});
+        std.debug.print("Read buffer: {s}\n\n", .{msg});
 
-        var parser = RespParser.RespParser.init(allocator, &buf);
+        var parser = RespParser.RespParser.init(allocator, msg);
         try parser.parse();
 
         switch (parser.commands[0]) {

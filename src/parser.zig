@@ -69,6 +69,7 @@ pub const RespParser = struct {
 
                                 // Reset for subsequent runs
                                 self.curr_arg_index = 0;
+
                                 self.state = .Array;
                                 // self.state = .Done;
                             }
