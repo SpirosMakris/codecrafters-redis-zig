@@ -10,8 +10,13 @@ pub const State = enum {
     Done,
 };
 
-const NUM_CMDS = 2;
+const NUM_CMDS = 10;
 const NUM_ARGS = 10;
+
+const ParseResult = struct {
+    command: Command,
+    consumed_bytes: usize,
+};
 
 pub const RespParser = struct {
     allocator: std.mem.Allocator,
@@ -28,30 +33,24 @@ pub const RespParser = struct {
         return RespParser{ .allocator = allocator, .buf = input, .state = .Array, .commands = allocator.alloc(Command, NUM_CMDS) catch unreachable, .temp_args = allocator.alloc([]const u8, NUM_ARGS) catch unreachable, .temp_lens = [_]usize{0} ** NUM_ARGS, .num_elems = 0, .curr_arg_index = 0, .command_count = 0 };
     }
 
-    // pub fn deinit(self: *RespParser) void {
-    //     self.arena.deinit();
-    // }
-
-    pub fn parse(self: *RespParser) !void {
+    pub fn parse(self: *RespParser) !?ParseResult {
         var tokens = std.mem.tokenize(u8, self.buf, "\r\n");
+        var consumed_bytes: usize = 0;
 
         while (tokens.next()) |token| {
-            std.debug.print("\nTOKEN: {s}\n", .{token});
+            consumed_bytes += token.len + 2; // include /r/n
 
             switch (self.state) {
                 .Array => {
-                    std.debug.print("----> ARRAY\n\n", .{});
                     switch (try parse_data_type(token)) {
                         .Array_t => |len| {
                             self.num_elems = len;
                             self.state = .Command;
-                            std.debug.print("ARRAY_T: {any} {any}", .{ self.num_elems, self.state });
                         },
                         else => return error.InvalidFormat,
                     }
                 },
                 .Command => {
-                    std.debug.print("----> COMMAND\n\n", .{});
                     switch (try parse_data_type(token)) {
                         .BString_t => |len| {
                             // Store the expected length of the bulk string
@@ -71,7 +70,11 @@ pub const RespParser = struct {
                                 self.curr_arg_index = 0;
 
                                 self.state = .Array;
-                                // self.state = .Done;
+
+                                return ParseResult{
+                                    .command = self.commands[self.command_count - 1],
+                                    .consumed_bytes = consumed_bytes,
+                                };
                             }
                         },
                         else => return error.InvalidFormat,
@@ -80,6 +83,8 @@ pub const RespParser = struct {
                 .Done => {},
             }
         }
+
+        return null; // Indicates incomplete command
     }
 
     fn process_command(self: *RespParser) !void {
