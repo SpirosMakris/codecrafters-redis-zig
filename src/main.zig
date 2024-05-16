@@ -13,8 +13,10 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Ziggy Redis\n", .{});
 
-    const allocator = std.heap.page_allocator;
-    var hash_map = std.StringArrayHashMap(MapEntry).init(allocator);
+    // const allocator = std.heap.page_allocator;
+    var state_buf: [2048]u8 = undefined;
+    var allocator = std.heap.FixedBufferAllocator.init(state_buf[0..]);
+    var hash_map = std.StringArrayHashMap(MapEntry).init(allocator.threadSafeAllocator());
     defer hash_map.deinit();
 
     var mutex = std.Thread.Mutex{};
@@ -95,13 +97,21 @@ fn handle_command(command: RespParser.Command, stream: anytype, state: *State) !
             state.mutex.lock();
             defer state.mutex.unlock();
 
+            // Copy key and entry since they have been allocated with current arena allocator
+            // and will be wiped when handle_client() ends
+            const hash_map_allocator = state.hash_map.allocator;
+            const key = try hash_map_allocator.alloc(u8, payload.key.len);
+            std.mem.copyForwards(u8, key, payload.key);
+            const value = try hash_map_allocator.alloc(u8, payload.value.len);
+            std.mem.copyForwards(u8, value, payload.value);
+
             const map_entry = MapEntry{
-                .value = payload.value,
+                .value = value,
                 .added_at = std.time.milliTimestamp(),
                 .px = payload.px,
             };
 
-            try state.hash_map.put(payload.key, map_entry);
+            try state.hash_map.put(key, map_entry);
             try stream.writeAll("+OK\r\n");
 
             std.debug.print("WROTE OK\n", .{});
@@ -117,6 +127,7 @@ fn handle_command(command: RespParser.Command, stream: anytype, state: *State) !
                 const now = std.time.milliTimestamp();
                 const added_at = entry.?.added_at;
                 const px = entry.?.px;
+                std.debug.print("entry: {any}\n", .{entry});
                 if (px == null or now < (added_at + px.?)) {
                     const len = entry.?.value.len;
                     const value = entry.?.value;
