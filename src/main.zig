@@ -5,6 +5,12 @@ const net = std.net;
 const State = struct {
     hash_map: *std.StringArrayHashMap(MapEntry),
     mutex: *std.Thread.Mutex,
+    config: *Config,
+};
+
+const Config = struct {
+    dir: []const u8,
+    db_filename: []const u8,
 };
 
 const MapEntry = struct { value: []const u8, added_at: i64, px: ?i64 };
@@ -13,17 +19,22 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Ziggy Redis\n", .{});
 
-    // const allocator = std.heap.page_allocator;
-    var state_buf: [2048]u8 = undefined;
-    var allocator = std.heap.FixedBufferAllocator.init(state_buf[0..]);
-    var hash_map = std.StringArrayHashMap(MapEntry).init(allocator.threadSafeAllocator());
-    defer hash_map.deinit();
-
-    var mutex = std.Thread.Mutex{};
-    var state = State{
-        .hash_map = &hash_map,
-        .mutex = &mutex,
+    var config = Config{
+        .dir = undefined,
+        .db_filename = undefined,
     };
+
+    try process_args(&config);
+    std.debug.print("CONFIG: {any}\n", .{config});
+
+    // State setup
+    var state_buf: [2048]u8 = undefined;
+    var state_allocator = std.heap.FixedBufferAllocator.init(state_buf[0..]);
+    var state_hash_map = std.StringArrayHashMap(MapEntry).init(state_allocator.threadSafeAllocator());
+    defer state_hash_map.deinit();
+
+    var state_mutex = std.Thread.Mutex{};
+    var state = State{ .hash_map = &state_hash_map, .mutex = &state_mutex, .config = &config };
 
     const address = try net.Address.resolveIp("127.0.0.1", 6379);
     var listener = try address.listen(.{ .reuse_address = true });
@@ -138,8 +149,48 @@ fn handle_command(command: RespParser.Command, stream: anytype, state: *State) !
                 }
             }
         },
+        RespParser.Command.Config => |payload| {
+            state.mutex.lock();
+            defer state.mutex.unlock();
+
+            switch (payload.method) {
+                .Get => {
+                    var param: []const u8 = undefined;
+                    var value: []const u8 = undefined;
+                    switch (payload.param) {
+                        .Dir => {
+                            param = "dir";
+                            value = state.config.dir;
+                        },
+                        .DbFilename => {
+                            param = "dbfilename";
+                            value = state.config.db_filename;
+                        },
+                    }
+                    try stream.writer().print("*2\r\n${d}\r\n{s}\r\n${}\r\n{s}\r\n", .{ param.len, param, value.len, value });
+                },
+            }
+        },
         else => {
             try stream.writeAll("-ERR unknown command\r\n");
         },
+    }
+}
+
+fn process_args(config: *Config) !void {
+    var args = std.process.args();
+    // Skip first arg, since it's the executable name
+    _ = args.skip();
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--dir")) {
+            const dir = args.next();
+            if (dir == null) return error.NoDirProvided;
+            config.dir = dir.?;
+        } else if (std.mem.eql(u8, arg, "--dbfilename")) {
+            const db_filename = args.next();
+            if (db_filename == null) return error.NoDbFilenameProvided;
+            config.db_filename = db_filename.?;
+        }
     }
 }

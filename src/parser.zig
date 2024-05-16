@@ -1,6 +1,14 @@
 const std = @import("std");
 
-pub const Command = union(enum) { Ping, Echo: []const u8, Set: struct { key: []const u8, value: []const u8, px: ?i64 }, Get: struct { key: []const u8 }, Generic: struct { name: []const u8, args: [][]const u8 } };
+pub const ConfigMethod = enum {
+    Get,
+};
+pub const ConfigParam = enum {
+    Dir,
+    DbFilename,
+};
+
+pub const Command = union(enum) { Ping, Echo: []const u8, Set: struct { key: []const u8, value: []const u8, px: ?i64 }, Get: struct { key: []const u8 }, Config: struct { method: ConfigMethod, param: ConfigParam }, Generic: struct { name: []const u8, args: [][]const u8 } };
 
 pub const DataType = union(enum) { Array_t: usize, BString_t: usize, Payload_t };
 
@@ -117,6 +125,23 @@ pub const RespParser = struct {
                 .value = self.temp_args[2],
                 .px = px,
             } };
+        } else if (std.mem.eql(u8, cmd_name, "config")) {
+            if (self.num_elems < 3) return error.InvalidNumArgsForConfig;
+
+            const method = try std.ascii.allocLowerString(self.allocator, self.temp_args[1]);
+            if (std.mem.eql(u8, method, "get")) {
+                var param: ConfigParam = undefined;
+                if (std.mem.eql(u8, self.temp_args[2], "dir")) {
+                    param = ConfigParam.Dir;
+                } else if (std.mem.eql(u8, self.temp_args[2], "dbfilename")) {
+                    param = ConfigParam.DbFilename;
+                } else return error.InvalidConfigParam;
+
+                self.commands[self.command_count] = Command{ .Config = .{
+                    .method = .Get,
+                    .param = param,
+                } };
+            }
         } else {
             self.commands[self.command_count] = Command{ .Generic = .{
                 .name = cmd_name,
@@ -141,17 +166,6 @@ pub const RespParser = struct {
             else => return DataType{ .Payload_t = {} },
         }
     }
-
-    // fn toLower(s: []const u8) []u8 {
-    //     var result = s;
-    //     for (result, 0..) |*c, i| {
-    //         if (std.ascii.isUpper(c.*)) {
-    //             result[i] = std.ascii.toLower(c.*);
-    //         }
-    //     }
-
-    //     return result;
-    // }
 };
 
 test "ping" {
