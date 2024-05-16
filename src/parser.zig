@@ -105,9 +105,11 @@ pub const RespParser = struct {
             if (self.num_elems < 3) return error.InvalidNumArgsForSet;
 
             var px: ?i64 = null;
-            const px_arg = try std.ascii.allocLowerString(self.allocator, self.temp_args[3]);
-            if (self.num_elems == 5 and std.mem.eql(u8, px_arg, "px")) {
-                px = try std.fmt.parseInt(i64, self.temp_args[4], 10);
+            if (self.num_elems == 5) {
+                const px_arg = try std.ascii.allocLowerString(self.allocator, self.temp_args[3]);
+                if (std.mem.eql(u8, px_arg, "px")) {
+                    px = try std.fmt.parseInt(i64, self.temp_args[4], 10);
+                }
             }
 
             self.commands[self.command_count] = Command{ .Set = .{
