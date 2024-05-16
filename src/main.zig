@@ -65,6 +65,7 @@ fn handle_client(stdout: anytype, connection: net.Server.Connection, state: *Sta
         // Try to parse all commands that have been read.
         // break out on partial command input
         while (true) {
+            std.debug.print("L: {}", .{fifo.readableLength()});
             var parser = RespParser.RespParser.init(allocator, fifo.readableSliceOfLen(bytes_read));
             const parse_result = try parser.parse();
             if (parse_result == null) break; // Incomplete command, wait for more data to be read
@@ -74,6 +75,10 @@ fn handle_client(stdout: anytype, connection: net.Server.Connection, state: *Sta
                 std.debug.print("Handling command: {}\n\n", .{err});
                 break;
             };
+            fifo.discard(bytes_read);
+            const num_left = fifo.readableLength();
+            std.debug.print("Rem: {}\n", .{num_left});
+            if (num_left == 0) break;
         }
     }
 }
@@ -98,6 +103,8 @@ fn handle_command(command: RespParser.Command, stream: anytype, state: *State) !
 
             try state.hash_map.put(payload.key, map_entry);
             try stream.writeAll("+OK\r\n");
+
+            std.debug.print("WROTE OK\n", .{});
         },
         RespParser.Command.Get => |payload| {
             state.mutex.lock();
